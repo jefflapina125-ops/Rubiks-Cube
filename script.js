@@ -4,7 +4,8 @@
  * Desktop controls are mouse/keyboard only.
  * Mobile controls are a completely separate touch implementation:
  *   - one finger drag anywhere on the game canvas = camera rotation
- *   - one finger tap on a cube piece = select it
+ *   - one finger tap on a cube tile = select it (cross arrows appear on that tile)
+ *   - tap an arrow = turn that row/column 90 degrees in the arrow's direction
  *   - two finger pinch = zoom
  */
 
@@ -12,6 +13,11 @@ let scene, camera, renderer, cubeGroup;
 let cubies = [];
 let isRotating = false;
 let selectedCubie = null;
+let selectedMat = 0;          // which sticker (material index) of the selected cubie was tapped
+let arrowLayer = null;
+let arrowButtons = [];
+let arrowDefs = [];
+let arrowsShown = false;
 let cameraZoom = 6;
 let cameraRotation = { x: -0.5, y: 0.5 };
 
@@ -59,6 +65,7 @@ function init() {
   scene.add(directionalLight);
 
   createCube();
+  createArrowUI();
   setupGameInput();
   updateCamera();
   resizeGame();
@@ -99,15 +106,174 @@ function createCube() {
   clearSelection();
 }
 
-function clearSelection() {
-  selectedCubie = null;
-  cubies.forEach(c => c.material.forEach(m => { m.opacity = 1; }));
+/* ---------------- TILE SELECTION + CROSS ARROWS ---------------- */
+
+const TILE_STEP = 1.05;                       // distance between cubie centres
+const AXES = ['x', 'y', 'z'];
+// Outward normal of each BoxGeometry material slot: +x, -x, +y, -y, +z, -z
+const LOCAL_NORMALS = [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]];
+const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 5.5l6.5 6.5-6.5 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function snapToAxis(v) {
+  const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+  if (ax >= ay && ax >= az) return new THREE.Vector3(Math.sign(v.x), 0, 0);
+  if (ay >= az) return new THREE.Vector3(0, Math.sign(v.y), 0);
+  return new THREE.Vector3(0, 0, Math.sign(v.z));
 }
 
-function setSelection(cubie) {
+// Which way a tile's sticker faces right now (cube space), snapped to an exact axis.
+function tileNormal(cubie, matIdx) {
+  const n = LOCAL_NORMALS[matIdx];
+  return snapToAxis(new THREE.Vector3(n[0], n[1], n[2]).applyQuaternion(cubie.quaternion));
+}
+
+function faceName(n) {
+  if (n.x > 0) return 'RIGHT';
+  if (n.x < 0) return 'LEFT';
+  if (n.y > 0) return 'TOP';
+  if (n.y < 0) return 'BOTTOM';
+  if (n.z > 0) return 'FRONT';
+  return 'BACK';
+}
+
+function clearSelection() {
+  selectedCubie = null;
+  arrowDefs = [];
+  cubies.forEach(c => c.material.forEach(m => { m.opacity = 1; m.emissive.setHex(0x000000); }));
+  const label = document.getElementById('face-label');
+  if (label) label.classList.remove('show');
+  setArrowsShown(false);
+}
+
+function setSelection(cubie, matIdx) {
   clearSelection();
   selectedCubie = cubie;
-  cubie.material.forEach(m => { m.opacity = 0.72; });
+  selectedMat = matIdx;
+  refreshSelection();
+}
+
+function selectTile(tile) {
+  if (isRotating) return;
+  if (selectedCubie === tile.cubie && selectedMat === tile.matIdx) clearSelection();
+  else setSelection(tile.cubie, tile.matIdx);
+}
+
+// Re-derives highlight, face label and arrows. Called on select and after every turn,
+// because the selected tile travels with its slice and may end up on a different face.
+function refreshSelection() {
+  if (!selectedCubie) return;
+  const n = tileNormal(selectedCubie, selectedMat);
+  const sliceAxes = AXES.filter(a => Math.abs(n[a]) < 0.5);   // the two axes lying in the tile's face
+
+  cubies.forEach(c => {
+    const inCross = sliceAxes.some(a => Math.round(c.position[a]) === Math.round(selectedCubie.position[a]));
+    c.material.forEach(m => { m.opacity = inCross ? 1 : 0.4; m.emissive.setHex(0x000000); });
+  });
+  selectedCubie.material[selectedMat].emissive.setHex(0x555555);
+
+  const label = document.getElementById('face-label');
+  if (label) {
+    label.textContent = faceName(n) + ' FACE';
+    label.classList.add('show');
+    positionFaceLabel();
+  }
+
+  buildArrowDefs(n);
+}
+
+// One arrow per direction (up/down/left/right on the tile's face).
+// Moving a tile in direction d means turning the slice about axis (n x d).
+function buildArrowDefs(n) {
+  arrowDefs = [];
+  AXES.filter(a => Math.abs(n[a]) < 0.5).forEach(a => {
+    [1, -1].forEach(sign => {
+      const dir = new THREE.Vector3();
+      dir[a] = sign;
+      const rot = new THREE.Vector3().crossVectors(n, dir);
+      const axis = AXES.find(k => Math.abs(rot[k]) > 0.5);
+      arrowDefs.push({
+        dir,
+        axis,
+        layer: Math.round(selectedCubie.position[axis]),
+        angle: Math.sign(rot[axis]) * Math.PI / 2,
+        sx: 0, sy: 0
+      });
+    });
+  });
+}
+
+function createArrowUI() {
+  arrowLayer = document.createElement('div');
+  arrowLayer.id = 'arrow-layer';
+  for (let i = 0; i < 4; i++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tile-arrow';
+    b.setAttribute('aria-label', 'Turn slice');
+    b.innerHTML = ARROW_SVG;
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      const def = arrowDefs[i];
+      if (def && selectedCubie && !isRotating) rotateFace(def.axis, def.layer, def.angle);
+    });
+    arrowLayer.appendChild(b);
+    arrowButtons.push(b);
+  }
+  document.getElementById('game-screen').appendChild(arrowLayer);
+}
+
+function setArrowsShown(show) {
+  if (!arrowLayer || show === arrowsShown) return;
+  arrowsShown = show;
+  arrowLayer.classList.toggle('show', show);
+}
+
+function projectToLayer(worldPos, rect) {
+  const v = worldPos.clone().project(camera);
+  return { x: (v.x + 1) / 2 * rect.width, y: (1 - v.y) / 2 * rect.height };
+}
+
+// Runs every frame: pins the 4 arrows to the selected tile. An arrow sits one tile away in its
+// direction, so on an edge tile with no neighbour it floats just outside the cube.
+function updateArrows() {
+  if (!arrowLayer) return;
+  if (!selectedCubie || isRotating || arrowDefs.length !== 4) { setArrowsShown(false); return; }
+
+  const n = tileNormal(selectedCubie, selectedMat);
+  const center = selectedCubie.position.clone().addScaledVector(n, 0.52);
+  const centerW = cubeGroup.localToWorld(center.clone());
+  const nW = n.clone().transformDirection(cubeGroup.matrixWorld);
+  const facing = camera.position.clone().sub(centerW).normalize().dot(nW);
+  if (facing < 0.1) { setArrowsShown(false); return; }   // tile is edge-on or on the far side
+
+  const rect = arrowLayer.getBoundingClientRect();
+  const c0 = projectToLayer(centerW, rect);
+  arrowDefs.forEach((def, i) => {
+    const pW = cubeGroup.localToWorld(center.clone().addScaledVector(def.dir, TILE_STEP));
+    const p = projectToLayer(pW, rect);
+    const ang = Math.atan2(p.y - c0.y, p.x - c0.x);
+    def.sx = Math.cos(ang);
+    def.sy = Math.sin(ang);
+    const x = clamp(p.x, 30, rect.width - 30);
+    const y = clamp(p.y, 30, rect.height - 30);
+    arrowButtons[i].style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + ang + 'rad)';
+  });
+  setArrowsShown(true);
+}
+
+// Keep the face label visible: drop it under the toolbar if they would overlap.
+function positionFaceLabel() {
+  const label = document.getElementById('face-label');
+  const bar = document.getElementById('game-toolbar');
+  const screenEl = document.getElementById('game-screen');
+  if (!label || !bar || !screenEl) return;
+  label.style.top = '';
+  const sr = screenEl.getBoundingClientRect();
+  const br = bar.getBoundingClientRect();
+  const lr = label.getBoundingClientRect();
+  if (lr.right > br.left && lr.left < br.right && lr.top < br.bottom) {
+    label.style.top = (br.bottom - sr.top + 8) + 'px';
+  }
 }
 
 function getPointerNdc(clientX, clientY) {
@@ -118,11 +284,20 @@ function getPointerNdc(clientX, clientY) {
   );
 }
 
-function pickCubie(clientX, clientY) {
+// Returns { cubie, matIdx } for the outward-facing tile under the pointer, or null.
+function pickTile(clientX, clientY) {
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(getPointerNdc(clientX, clientY), camera);
-  const hit = raycaster.intersectObjects(cubies, false);
-  return hit.length ? hit[0].object : null;
+  const hits = raycaster.intersectObjects(cubies, false);
+  for (const h of hits) {
+    const cubie = h.object;
+    const matIdx = h.face.materialIndex;
+    const n = tileNormal(cubie, matIdx);
+    // Only stickers on the outside of the cube count (skip hidden inner/side faces seen through gaps).
+    const depth = cubie.position.clone().divideScalar(TILE_STEP).dot(n);
+    if (Math.round(depth) === 1) return { cubie, matIdx };
+  }
+  return null;
 }
 
 function updateCamera() {
@@ -139,6 +314,7 @@ function playGameSound(type='tap') {
 
 function setupGameInput() {
   window.addEventListener('resize', resizeGame, { passive: true });
+  window.addEventListener('resize', positionFaceLabel, { passive: true });
   document.addEventListener('fullscreenchange', resizeGame);
 
   const canvas = renderer.domElement;
@@ -275,9 +451,9 @@ function mobileTouchEnd(e) {
 
   if (state.mode === 'rotate' && !state.moved) {
     const t = e.changedTouches[0];
-    const cubie = pickCubie(t.clientX, t.clientY);
-    if (cubie) {
-      setSelection(cubie);
+    const tile = pickTile(t.clientX, t.clientY);
+    if (tile) {
+      selectTile(tile);
       playGameSound('tap');
     } else {
       clearSelection();
@@ -328,8 +504,8 @@ function desktopMouseUp(e) {
   desktopMouse = null;
 
   if (state.mode === 'select' && e.button === 0 && !state.moved) {
-    const cubie = pickCubie(e.clientX, e.clientY);
-    if (cubie) setSelection(cubie); else clearSelection();
+    const tile = pickTile(e.clientX, e.clientY);
+    if (tile) selectTile(tile); else clearSelection();
   }
 }
 
@@ -351,24 +527,18 @@ function desktopWheel(e) {
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function distanceXY(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
+// Arrow keys press whichever on-screen arrow points that way.
 function onKeyDown(e) {
-  if (!selectedCubie || isRotating) return;
-  const { x, y, z } = selectedCubie.position;
-  const nx = Math.round(x);
-  const ny = Math.round(y);
-  const nz = Math.round(z);
-
-  let rotationAxis;
-  let rotationAngle = Math.PI / 2;
-  if (Math.abs(nx) === 1) rotationAxis = 'x';
-  else if (Math.abs(ny) === 1) rotationAxis = 'y';
-  else rotationAxis = 'z';
-
-  if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') rotationAngle = -Math.PI / 2;
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-    e.preventDefault();
-    rotateFace(rotationAxis, nx === 0 ? (ny === 0 ? nz : ny) : nx, rotationAngle);
-  }
+  const keys = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+  const want = keys[e.key];
+  if (!want || !selectedCubie || isRotating || !arrowsShown) return;
+  e.preventDefault();
+  let best = null, bestDot = -2;
+  arrowDefs.forEach(def => {
+    const d = def.sx * want[0] + def.sy * want[1];
+    if (d > bestDot) { bestDot = d; best = def; }
+  });
+  if (best && bestDot > 0.3) rotateFace(best.axis, best.layer, best.angle);
 }
 
 function setView(view) {
@@ -377,8 +547,8 @@ function setView(view) {
     case 'bottom': cameraRotation = { x: -Math.PI / 2, y: 0 }; break;
     case 'front': cameraRotation = { x: 0, y: 0 }; break;
     case 'back': cameraRotation = { x: 0, y: Math.PI }; break;
-    case 'left': cameraRotation = { x: 0, y: Math.PI / 2 }; break;
-    case 'right': cameraRotation = { x: 0, y: -Math.PI / 2 }; break;
+    case 'left': cameraRotation = { x: 0, y: -Math.PI / 2 }; break;
+    case 'right': cameraRotation = { x: 0, y: Math.PI / 2 }; break;
   }
   updateCamera();
 }
@@ -413,6 +583,7 @@ function rotateFace(axis, layer, angle) {
       });
       scene.remove(group);
       isRotating = false;
+      refreshSelection();
       playGameSound('move');
     })
     .start();
@@ -420,6 +591,7 @@ function rotateFace(axis, layer, angle) {
 
 async function shuffleCube() {
   if (isRotating) return;
+  clearSelection();
   const diff = parseInt(document.getElementById('difficulty').value, 10);
   const axes = ['x','y','z'];
   const layers = [-1,0,1];
@@ -435,6 +607,7 @@ async function shuffleCube() {
 
 function solveCube() {
   if (isRotating) return;
+  clearSelection();
   isRotating = true;
   new TWEEN.Tween(cubeGroup.rotation)
     .to({x:0,y:0,z:0},700)
@@ -447,6 +620,7 @@ function animate() {
   requestAnimationFrame(animate);
   TWEEN.update();
   renderer.render(scene,camera);
+  updateArrows();
 }
 
 if (typeof THREE !== 'undefined' && typeof TWEEN !== 'undefined') init();
