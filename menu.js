@@ -18,7 +18,9 @@ const ambient = document.querySelector('.ambient-bg');
 const carousel = document.getElementById('level-carousel');
 const track = document.getElementById('level-track');
 const dots = document.getElementById('carousel-dots');
-const isTouchDevice = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const IN_APP = /RubiksCubeApp/.test(navigator.userAgent);
+let lastTouchAt = 0;
+let suppressClickUntil = 0;
 
 let currentLevel = 1;
 let currentOffset = 0;
@@ -57,6 +59,7 @@ function playSound(type='tap') {
 }
 
 function enterImmersive() {
+  if (IN_APP) return; // the Android app is already fully immersive
   const root = document.documentElement;
   try {
     if (document.fullscreenElement !== root && root.requestFullscreen) {
@@ -264,7 +267,7 @@ function goToLevel(n) {
 
 function touchStart(e) {
   if (e.touches.length !== 1 || animating) return;
-  if (e.target.closest('button')) { dragState = null; return; }
+  lastTouchAt = Date.now();
   const t = e.touches[0];
   dragState = {startX:t.clientX,startY:t.clientY,lastX:t.clientX,dragging:false};
 }
@@ -283,8 +286,10 @@ function touchMove(e) {
 }
 
 function touchEnd(e) {
+  lastTouchAt = Date.now();
   if (!dragState || animating) { dragState=null; return; }
   const state = dragState;
+  if (state.dragging) suppressClickUntil = Date.now() + 400;
   dragState = null;
   const touch = e.changedTouches[0];
   const dx = touch.clientX-state.startX;
@@ -298,11 +303,11 @@ function touchEnd(e) {
 }
 
 function mouseDown(e) {
-  if (isTouchDevice || e.button!==0 || animating) return;
+  if (Date.now()-lastTouchAt<800 || e.button!==0 || animating) return;
   dragState={startX:e.clientX,startY:e.clientY,lastX:e.clientX,dragging:false};
 }
 function mouseMove(e) {
-  if (isTouchDevice || !dragState || animating) return;
+  if (Date.now()-lastTouchAt<800 || !dragState || animating) return;
   const dx=e.clientX-dragState.startX;
   const dy=e.clientY-dragState.startY;
   if (!dragState.dragging && Math.abs(dx)>7 && Math.abs(dx)>Math.abs(dy)) dragState.dragging=true;
@@ -311,8 +316,9 @@ function mouseMove(e) {
   positionCards(currentOffset,false);
 }
 function mouseUp(e) {
-  if (isTouchDevice || !dragState || animating) return;
+  if (Date.now()-lastTouchAt<800 || !dragState || animating) return;
   const state=dragState; dragState=null;
+  if (state.dragging) suppressClickUntil = Date.now() + 400;
   const dx=e.clientX-state.startX; const dy=e.clientY-state.startY;
   if (state.dragging && Math.abs(dx)>45 && Math.abs(dx)>Math.abs(dy)) animateToNext(dx<0?1:-1);
   else if (state.dragging) { currentOffset=0; positionCards(0,true); }
@@ -382,17 +388,16 @@ soundToggle.addEventListener('change',e=>{
   if(e.target.checked) playSound('tap');
 });
 
-if (isTouchDevice) {
-  carousel.addEventListener('touchstart',touchStart,{passive:true});
-  carousel.addEventListener('touchmove',touchMove,{passive:false});
-  carousel.addEventListener('touchend',touchEnd,{passive:true});
-  carousel.addEventListener('touchcancel',()=>{dragState=null;currentOffset=0;positionCards(0,true)},{passive:true});
-} else {
-  carousel.addEventListener('mousedown',mouseDown);
-  carousel.addEventListener('mousemove',mouseMove);
-  carousel.addEventListener('mouseup',mouseUp);
-  carousel.addEventListener('mouseleave',e=>{if(dragState)mouseUp(e);});
-}
+carousel.addEventListener('touchstart',touchStart,{passive:true});
+carousel.addEventListener('touchmove',touchMove,{passive:false});
+carousel.addEventListener('touchend',touchEnd,{passive:true});
+carousel.addEventListener('touchcancel',()=>{dragState=null;currentOffset=0;positionCards(0,true)},{passive:true});
+carousel.addEventListener('mousedown',mouseDown);
+carousel.addEventListener('mousemove',mouseMove);
+carousel.addEventListener('mouseup',mouseUp);
+carousel.addEventListener('mouseleave',e=>{if(dragState)mouseUp(e);});
+// A swipe that starts on a card/button must not also count as a tap on it.
+carousel.addEventListener('click',e=>{ if (Date.now()<suppressClickUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
 
 window.addEventListener('resize',()=>positionCards(0,false));
 window.addEventListener('keydown',e=>{
@@ -408,3 +413,10 @@ document.addEventListener('fullscreenchange',()=>{
 
 buildCarousel();
 positionCards(0,false);
+
+// Inside the Android app the system is already fullscreen: drop the useless fullscreen controls.
+if (IN_APP) {
+  document.documentElement.classList.add('in-app');
+  ['home-fullscreen','levels-fullscreen','game-fullscreen'].forEach(id => document.getElementById(id)?.remove());
+  document.getElementById('settings-fullscreen')?.closest('.settings-card')?.remove();
+}

@@ -24,7 +24,6 @@ const COLORS = {
   right: 0x00ff00
 };
 
-const isTouchDevice = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 let mobileTouch = null;
 let desktopMouse = null;
 
@@ -112,9 +111,10 @@ function setSelection(cubie) {
 }
 
 function getPointerNdc(clientX, clientY) {
+  const r = renderer.domElement.getBoundingClientRect();
   return new THREE.Vector2(
-    (clientX / window.innerWidth) * 2 - 1,
-    -(clientY / window.innerHeight) * 2 + 1
+    ((clientX - r.left) / r.width) * 2 - 1,
+    -((clientY - r.top) / r.height) * 2 + 1
   );
 }
 
@@ -145,21 +145,19 @@ function setupGameInput() {
   canvas.style.touchAction = 'none';
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-  if (isTouchDevice) {
-    // PHONE/TABLET INPUT ONLY: native Touch Events, no pointer events.
-    canvas.addEventListener('touchstart', mobileTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', mobileTouchMove, { passive: false });
-    canvas.addEventListener('touchend', mobileTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', mobileTouchCancel, { passive: false });
-  } else {
-    // DESKTOP INPUT ONLY: traditional mouse + wheel.
-    canvas.addEventListener('mousedown', desktopMouseDown);
-    canvas.addEventListener('mousemove', desktopMouseMove);
-    canvas.addEventListener('mouseup', desktopMouseUp);
-    canvas.addEventListener('mouseleave', desktopMouseLeave);
-    window.addEventListener('mouseup', desktopWindowMouseUp);
-    window.addEventListener('wheel', desktopWheel, { passive: true });
-  }
+  // Touch (phones/tablets). preventDefault on touchstart also suppresses emulated mouse events.
+  canvas.addEventListener('touchstart', mobileTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', mobileTouchMove, { passive: false });
+  canvas.addEventListener('touchend', mobileTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', mobileTouchCancel, { passive: false });
+
+  // Mouse + wheel (desktop).
+  canvas.addEventListener('mousedown', desktopMouseDown);
+  canvas.addEventListener('mousemove', desktopMouseMove);
+  canvas.addEventListener('mouseup', desktopMouseUp);
+  canvas.addEventListener('mouseleave', desktopMouseLeave);
+  window.addEventListener('mouseup', desktopWindowMouseUp);
+  window.addEventListener('wheel', desktopWheel, { passive: true });
 
   document.getElementById('shuffle-btn').addEventListener('click', () => { playGameSound('start'); shuffleCube(); });
   document.getElementById('solve-btn').addEventListener('click', () => { playGameSound('start'); solveCube(); });
@@ -183,7 +181,6 @@ function setupGameInput() {
 /* ---------------- MOBILE TOUCH ---------------- */
 
 function mobileTouchStart(e) {
-  if (isRotating) return;
   e.preventDefault();
 
   if (e.touches.length >= 2) {
@@ -209,7 +206,7 @@ function mobileTouchStart(e) {
 }
 
 function mobileTouchMove(e) {
-  if (!mobileTouch || isRotating) return;
+  if (!mobileTouch) return;
   e.preventDefault();
 
   if (e.touches.length >= 2) {
@@ -346,6 +343,7 @@ function desktopMouseLeave() {
 }
 
 function desktopWheel(e) {
+  if (document.body.dataset.screen !== 'game') return;
   cameraZoom = clamp(cameraZoom + e.deltaY * 0.004, 3.1, 14);
   updateCamera();
 }
@@ -451,4 +449,5 @@ function animate() {
   renderer.render(scene,camera);
 }
 
-init();
+if (typeof THREE !== 'undefined' && typeof TWEEN !== 'undefined') init();
+else console.error('three.js / tween.js failed to load');
