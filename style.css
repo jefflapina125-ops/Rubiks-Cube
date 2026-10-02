@@ -127,3 +127,42 @@ button:hover {
     width: 100vw;
     height: 100vh;
 }
+
+
+/* ---------- Responsive / mobile layout ---------- */
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; height: 100dvh; overscroll-behavior: none; }
+body { touch-action: manipulation; }
+#canvas-container { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; }
+#canvas-container canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+#face-label { top: max(12px, env(safe-area-inset-top)) !important; font-size: clamp(16px, 2.5vw, 24px) !important; }
+#orientation-notice { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; padding: 24px; background: rgba(8, 15, 30, .97); text-align: center; }
+.orientation-card { width: min(100%, 360px); }
+.orientation-icon { font-size: 54px; line-height: 1.2; color: #60a5fa; }
+.orientation-card h2 { margin: 12px 0 8px; font-size: 22px; }
+.orientation-card p { color: var(--text-dim); line-height: 1.5; }
+#orientation-continue { margin-top: 10px; }
+@media (max-width: 900px) {
+  #ui-panel { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); gap: 7px; max-width: 34vw; }
+  .stat-box { width: clamp(112px, 20vw, 165px); padding: 8px; }
+  .button-group { flex-direction: row; flex-wrap: wrap; gap: 5px; }
+  button { padding: 8px 10px; font-size: 11px; }
+  .controls { padding: 8px; font-size: 10px; line-height: 1.35; max-width: 210px; }
+  .controls p { margin: 3px 0; }
+  #view-panel { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: clamp(112px, 19vw, 150px); padding: 8px; }
+  .view-buttons { gap: 4px; }
+  .view-buttons button { padding: 7px 3px; font-size: 10px; }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  #orientation-notice { display: flex; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  #ui-panel { top: 5px; left: 6px; gap: 5px; }
+  .stat-box { padding: 6px; }
+  .label { margin-bottom: 4px; font-size: 10px; }
+  .controls { padding: 6px; font-size: 9px; line-height: 1.25; }
+  .controls p { margin: 2px 0; }
+  #view-panel { top: 5px; right: 6px; padding: 6px; }
+  .view-buttons button { padding: 5px 2px; }
+}
+@media (hover: none) { button:hover { background: var(--panel-bg); border-color: var(--border); } button:active { background: var(--accent); } }

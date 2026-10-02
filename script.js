@@ -71,6 +71,28 @@ const neighborMat = new THREE.MeshBasicMaterial({ ...overlayMatBase, color: 0xfa
 const outlineMat  = new THREE.LineBasicMaterial({ color: 0xffffff });
 const arrowMat    = new THREE.MeshBasicMaterial({ color: 0x0f172a });
 
+
+function resizeRenderer() {
+    if (!camera || !renderer) return;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    camera.aspect = width / Math.max(height, 1);
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height);
+}
+
+async function requestLandscapeOnMobile() {
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+        (window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+    if (!isMobile) return;
+    // Orientation locking is permitted only by some browsers, often after install/fullscreen and a user gesture.
+    try {
+        if (screen.orientation && typeof screen.orientation.lock === 'function') {
+            await screen.orientation.lock('landscape');
+        }
+    } catch (_) { /* Unsupported until installed, fullscreen, or user-initiated; CSS notice handles portrait. */ }
+}
+
 /* ---------- Setup ---------- */
 
 function init() {
@@ -235,11 +257,12 @@ function turnTowards(dir) {
 
 function setupEventListeners() {
     const canvas = renderer.domElement;
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+    window.addEventListener('resize', resizeRenderer);
+    window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 150));
+    document.getElementById('orientation-continue')?.addEventListener('click', () => {
+        document.getElementById('orientation-notice').style.display = 'none';
     });
+    requestLandscapeOnMobile();
     window.addEventListener('wheel', (e) => {
         cameraZoom += e.deltaY * 0.005;
         cameraZoom = Math.max(3, Math.min(15, cameraZoom));
