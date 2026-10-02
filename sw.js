@@ -1,13 +1,1 @@
-const CACHE_NAME = 'rubiks-cube-v1';
-const APP_SHELL = ['./', './index.html', './style.css', './script.js', './manifest.webmanifest', './icon.svg'];
-self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))); self.skipWaiting(); });
-self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-    if (response.ok) { const copy = response.clone(); caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)); }
-    return response;
-  })));
-});
+const CACHE='rubiks-cube-v2'; self.addEventListener('install',e=>{self.skipWaiting()}); self.addEventListener('activate',e=>{e.waitUntil((async()=>{await caches.delete('rubiks-cube-v1');await self.clients.claim()})())}); self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return;e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request))) });
