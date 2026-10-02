@@ -1,4 +1,4 @@
-const CACHE = 'rubiks-cube-v5';
+const CACHE = 'rubiks-cube-v6';
 self.addEventListener('install', event => self.skipWaiting());
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {

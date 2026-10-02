@@ -1,10 +1,11 @@
-/**
- * RUBIKS CUBE 3D game
- * Mouse/touch:
- * - Drag empty space or the canvas: rotate camera
- * - Two-finger pinch: zoom
- * - Tap a cubie: select it
- * - Keyboard arrows after selecting a cubie: turn its layer
+/*
+ * RUBIKS CUBE 3D GAME
+ *
+ * Desktop controls are mouse/keyboard only.
+ * Mobile controls are a completely separate touch implementation:
+ *   - one finger drag anywhere on the game canvas = camera rotation
+ *   - one finger tap on a cube piece = select it
+ *   - two finger pinch = zoom
  */
 
 let scene, camera, renderer, cubeGroup;
@@ -13,8 +14,6 @@ let isRotating = false;
 let selectedCubie = null;
 let cameraZoom = 6;
 let cameraRotation = { x: -0.5, y: 0.5 };
-let pointers = new Map();
-let gesture = null;
 
 const COLORS = {
   front: 0xff0000,
@@ -25,13 +24,17 @@ const COLORS = {
   right: 0x00ff00
 };
 
+const isTouchDevice = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+let mobileTouch = null;
+let desktopMouse = null;
+
 function resizeGame() {
   if (!renderer || !camera) return;
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  const width = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+  const height = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.setSize(width, height, false);
 }
 
@@ -41,12 +44,14 @@ function init() {
 
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(5, 5, 5);
-  camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.domElement.id = 'rubiks-canvas';
   renderer.domElement.setAttribute('aria-label', '3D Rubiks Cube');
+  renderer.domElement.setAttribute('role', 'img');
+
   document.getElementById('canvas-container').appendChild(renderer.domElement);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.72));
@@ -55,8 +60,9 @@ function init() {
   scene.add(directionalLight);
 
   createCube();
-  setupEventListeners();
+  setupGameInput();
   updateCamera();
+  resizeGame();
   animate();
 }
 
@@ -64,8 +70,8 @@ function createCube() {
   if (cubeGroup) scene.remove(cubeGroup);
   cubeGroup = new THREE.Group();
   cubies = [];
-  const spacing = 1.05;
 
+  const spacing = 1.05;
   for (let x = -1; x <= 1; x++) {
     for (let y = -1; y <= 1; y++) {
       for (let z = -1; z <= 1; z++) {
@@ -80,6 +86,7 @@ function createCube() {
           new THREE.MeshLambertMaterial({ color: z === 1 ? COLORS.front : 0x111111, transparent: true }),
           new THREE.MeshLambertMaterial({ color: z === -1 ? COLORS.back : 0x111111, transparent: true })
         ];
+
         const cubie = new THREE.Mesh(geometry, materials);
         cubie.position.set(x * spacing, y * spacing, z * spacing);
         cubie.userData = { x, y, z };
@@ -88,6 +95,7 @@ function createCube() {
       }
     }
   }
+
   scene.add(cubeGroup);
   clearSelection();
 }
@@ -113,8 +121,8 @@ function getPointerNdc(clientX, clientY) {
 function pickCubie(clientX, clientY) {
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(getPointerNdc(clientX, clientY), camera);
-  const intersects = raycaster.intersectObjects(cubies, false);
-  return intersects.length ? intersects[0].object : null;
+  const hit = raycaster.intersectObjects(cubies, false);
+  return hit.length ? hit[0].object : null;
 }
 
 function updateCamera() {
@@ -129,29 +137,39 @@ function playGameSound(type='tap') {
   if (typeof playSound === 'function') playSound(type === 'move' ? 'slide' : type);
 }
 
-function setupEventListeners() {
-  window.addEventListener('resize', resizeGame);
-
-  window.addEventListener('wheel', e => {
-    cameraZoom = Math.max(3.1, Math.min(14, cameraZoom + e.deltaY * 0.004));
-    updateCamera();
-  }, { passive: true });
+function setupGameInput() {
+  window.addEventListener('resize', resizeGame, { passive: true });
+  document.addEventListener('fullscreenchange', resizeGame);
 
   const canvas = renderer.domElement;
   canvas.style.touchAction = 'none';
-
   canvas.addEventListener('contextmenu', e => e.preventDefault());
-  canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
-  canvas.addEventListener('pointermove', onPointerMove, { passive: false });
-  canvas.addEventListener('pointerup', onPointerUp, { passive: false });
-  canvas.addEventListener('pointercancel', onPointerCancel, { passive: false });
+
+  if (isTouchDevice) {
+    // PHONE/TABLET INPUT ONLY: native Touch Events, no pointer events.
+    canvas.addEventListener('touchstart', mobileTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', mobileTouchMove, { passive: false });
+    canvas.addEventListener('touchend', mobileTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', mobileTouchCancel, { passive: false });
+  } else {
+    // DESKTOP INPUT ONLY: traditional mouse + wheel.
+    canvas.addEventListener('mousedown', desktopMouseDown);
+    canvas.addEventListener('mousemove', desktopMouseMove);
+    canvas.addEventListener('mouseup', desktopMouseUp);
+    canvas.addEventListener('mouseleave', desktopMouseLeave);
+    window.addEventListener('mouseup', desktopWindowMouseUp);
+    window.addEventListener('wheel', desktopWheel, { passive: true });
+  }
 
   document.getElementById('shuffle-btn').addEventListener('click', () => { playGameSound('start'); shuffleCube(); });
   document.getElementById('solve-btn').addEventListener('click', () => { playGameSound('start'); solveCube(); });
   document.getElementById('restart-btn').addEventListener('click', () => { playGameSound('tap'); createCube(); });
 
   document.querySelectorAll('[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => { playGameSound('tap'); setView(btn.dataset.view); });
+    btn.addEventListener('click', () => {
+      playGameSound('tap');
+      setView(btn.dataset.view);
+    });
   });
 
   document.getElementById('view-toggle').addEventListener('click', () => {
@@ -162,98 +180,178 @@ function setupEventListeners() {
   window.addEventListener('keydown', onKeyDown);
 }
 
-function onPointerDown(e) {
-  e.preventDefault();
-  renderer.domElement.setPointerCapture?.(e.pointerId);
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+/* ---------------- MOBILE TOUCH ---------------- */
 
-  if (pointers.size === 1) {
-    gesture = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      lastX: e.clientX,
-      lastY: e.clientY,
-      moved: false,
-      startCubie: pickCubie(e.clientX, e.clientY)
+function mobileTouchStart(e) {
+  if (isRotating) return;
+  e.preventDefault();
+
+  if (e.touches.length >= 2) {
+    const a = e.touches[0];
+    const b = e.touches[1];
+    mobileTouch = {
+      mode: 'pinch',
+      startDistance: distanceXY(a.clientX, a.clientY, b.clientX, b.clientY),
+      startZoom: cameraZoom
     };
-  } else if (pointers.size === 2) {
-    const pts = [...pointers.values()];
-    gesture = { pinchStartDistance: distance(pts[0], pts[1]), pinchStartZoom: cameraZoom };
+    return;
   }
+
+  const t = e.touches[0];
+  mobileTouch = {
+    mode: 'rotate',
+    startX: t.clientX,
+    startY: t.clientY,
+    lastX: t.clientX,
+    lastY: t.clientY,
+    moved: false
+  };
 }
 
-function onPointerMove(e) {
-  if (!pointers.has(e.pointerId)) return;
+function mobileTouchMove(e) {
+  if (!mobileTouch || isRotating) return;
   e.preventDefault();
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
 
-  if (pointers.size >= 2) {
-    const pts = [...pointers.values()];
-    if (!gesture?.pinchStartDistance) {
-      gesture = { pinchStartDistance: distance(pts[0], pts[1]), pinchStartZoom: cameraZoom };
+  if (e.touches.length >= 2) {
+    if (mobileTouch.mode !== 'pinch') {
+      const a = e.touches[0];
+      const b = e.touches[1];
+      mobileTouch = {
+        mode: 'pinch',
+        startDistance: distanceXY(a.clientX, a.clientY, b.clientX, b.clientY),
+        startZoom: cameraZoom
+      };
     }
-    const d = distance(pts[0], pts[1]);
-    cameraZoom = Math.max(3.1, Math.min(14, gesture.pinchStartZoom * gesture.pinchStartDistance / Math.max(30, d)));
+
+    const a = e.touches[0];
+    const b = e.touches[1];
+    const currentDistance = distanceXY(a.clientX, a.clientY, b.clientX, b.clientY);
+    cameraZoom = clamp(
+      mobileTouch.startZoom * (mobileTouch.startDistance / Math.max(30, currentDistance)),
+      3.1,
+      14
+    );
     updateCamera();
     return;
   }
 
-  if (!gesture || gesture.pointerId !== e.pointerId) return;
-  const dxTotal = e.clientX - gesture.startX;
-  const dyTotal = e.clientY - gesture.startY;
-  if (Math.hypot(dxTotal, dyTotal) > 7) gesture.moved = true;
+  if (mobileTouch.mode !== 'rotate') return;
+  const t = e.touches[0];
+  const dxTotal = t.clientX - mobileTouch.startX;
+  const dyTotal = t.clientY - mobileTouch.startY;
 
-  const dx = e.clientX - gesture.lastX;
-  const dy = e.clientY - gesture.lastY;
-  if (gesture.moved) {
-    // A one-finger drag rotates the camera. This works over both empty space and the cube.
-    cameraRotation.y -= dx * 0.0085;
-    cameraRotation.x += dy * 0.0085;
-    cameraRotation.x = Math.max(-Math.PI * 0.49, Math.min(Math.PI * 0.49, cameraRotation.x));
-    updateCamera();
-  }
-  gesture.lastX = e.clientX;
-  gesture.lastY = e.clientY;
+  if (!mobileTouch.moved && Math.hypot(dxTotal, dyTotal) > 7) mobileTouch.moved = true;
+  if (!mobileTouch.moved) return;
+
+  const dx = t.clientX - mobileTouch.lastX;
+  const dy = t.clientY - mobileTouch.lastY;
+
+  cameraRotation.y -= dx * 0.0085;
+  cameraRotation.x += dy * 0.0085;
+  cameraRotation.x = clamp(cameraRotation.x, -Math.PI * 0.49, Math.PI * 0.49);
+  updateCamera();
+
+  mobileTouch.lastX = t.clientX;
+  mobileTouch.lastY = t.clientY;
 }
 
-function onPointerUp(e) {
+function mobileTouchEnd(e) {
+  if (!mobileTouch) return;
   e.preventDefault();
-  const state = gesture;
-  pointers.delete(e.pointerId);
 
-  if (pointers.size === 1) {
-    // Continue normal one-finger rotation after a pinch ends.
-    const p = [...pointers.entries()][0];
-    gesture = { pointerId: p[0], startX: p[1].x, startY: p[1].y, lastX: p[1].x, lastY: p[1].y, moved: true, startCubie: null };
+  // Pinch ended with one finger still down: seamlessly continue as a camera drag.
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    mobileTouch = {
+      mode: 'rotate',
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      moved: true
+    };
     return;
   }
-  if (pointers.size > 0) return;
-  gesture = null;
 
-  if (!state) return;
-  if (!state.moved && e.pointerType !== 'mouse') {
-    const cubie = pickCubie(e.clientX, e.clientY);
+  const state = mobileTouch;
+  mobileTouch = null;
+
+  if (state.mode === 'rotate' && !state.moved) {
+    const t = e.changedTouches[0];
+    const cubie = pickCubie(t.clientX, t.clientY);
     if (cubie) {
       setSelection(cubie);
       playGameSound('tap');
     } else {
       clearSelection();
     }
-  } else if (!state.moved && e.pointerType === 'mouse' && e.button === 0) {
+  }
+}
+
+function mobileTouchCancel(e) {
+  e.preventDefault();
+  mobileTouch = null;
+}
+
+/* ---------------- DESKTOP MOUSE ---------------- */
+
+function desktopMouseDown(e) {
+  if (e.button === 2) {
+    desktopMouse = { mode:'camera', lastX:e.clientX, lastY:e.clientY };
+    return;
+  }
+  if (e.button === 0) {
+    desktopMouse = { mode:'select', startX:e.clientX, startY:e.clientY, moved:false };
+  }
+}
+
+function desktopMouseMove(e) {
+  if (!desktopMouse) return;
+
+  if (desktopMouse.mode === 'camera') {
+    const dx = e.clientX - desktopMouse.lastX;
+    const dy = e.clientY - desktopMouse.lastY;
+    cameraRotation.y -= dx * 0.01;
+    cameraRotation.x += dy * 0.01;
+    cameraRotation.x = clamp(cameraRotation.x, -Math.PI * 0.49, Math.PI * 0.49);
+    updateCamera();
+    desktopMouse.lastX = e.clientX;
+    desktopMouse.lastY = e.clientY;
+    return;
+  }
+
+  if (desktopMouse.mode === 'select' && Math.hypot(e.clientX-desktopMouse.startX, e.clientY-desktopMouse.startY) > 6) {
+    desktopMouse.moved = true;
+  }
+}
+
+function desktopMouseUp(e) {
+  if (!desktopMouse) return;
+  const state = desktopMouse;
+  desktopMouse = null;
+
+  if (state.mode === 'select' && e.button === 0 && !state.moved) {
     const cubie = pickCubie(e.clientX, e.clientY);
     if (cubie) setSelection(cubie); else clearSelection();
   }
 }
 
-function onPointerCancel(e) {
-  pointers.delete(e.pointerId);
-  gesture = null;
+function desktopWindowMouseUp(e) {
+  if (desktopMouse?.mode === 'camera' && e.button === 2) desktopMouse = null;
 }
 
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+function desktopMouseLeave() {
+  // Camera dragging is allowed to continue if the pointer leaves the canvas;
+  // mouseup on window will end it.
 }
+
+function desktopWheel(e) {
+  cameraZoom = clamp(cameraZoom + e.deltaY * 0.004, 3.1, 14);
+  updateCamera();
+}
+
+function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function distanceXY(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
 function onKeyDown(e) {
   if (!selectedCubie || isRotating) return;
@@ -262,20 +360,21 @@ function onKeyDown(e) {
   const ny = Math.round(y);
   const nz = Math.round(z);
 
-  let rotationAxis = null;
+  let rotationAxis;
   let rotationAngle = Math.PI / 2;
   if (Math.abs(nx) === 1) rotationAxis = 'x';
   else if (Math.abs(ny) === 1) rotationAxis = 'y';
   else rotationAxis = 'z';
+
   if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') rotationAngle = -Math.PI / 2;
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
     e.preventDefault();
     rotateFace(rotationAxis, nx === 0 ? (ny === 0 ? nz : ny) : nx, rotationAngle);
   }
 }
 
 function setView(view) {
-  switch(view) {
+  switch (view) {
     case 'top': cameraRotation = { x: Math.PI / 2, y: 0 }; break;
     case 'bottom': cameraRotation = { x: -Math.PI / 2, y: 0 }; break;
     case 'front': cameraRotation = { x: 0, y: 0 }; break;
@@ -296,15 +395,14 @@ function rotateFace(axis, layer, angle) {
     const p = c.position;
     return axis === 'x' ? Math.round(p.x) === layer : axis === 'y' ? Math.round(p.y) === layer : Math.round(p.z) === layer;
   });
+
   rotatingCubies.forEach(c => group.add(c));
 
   const state = { angle: 0 };
   new TWEEN.Tween(state)
     .to({ angle }, 260)
     .easing(TWEEN.Easing.Cubic.InOut)
-    .onUpdate(() => {
-      group.rotation[axis] = state.angle;
-    })
+    .onUpdate(() => { group.rotation[axis] = state.angle; })
     .onComplete(() => {
       rotatingCubies.forEach(c => {
         const worldPos = new THREE.Vector3();
@@ -325,15 +423,15 @@ function rotateFace(axis, layer, angle) {
 async function shuffleCube() {
   if (isRotating) return;
   const diff = parseInt(document.getElementById('difficulty').value, 10);
-  const axes = ['x', 'y', 'z'];
-  const layers = [-1, 0, 1];
-  for (let i = 0; i < diff; i++) {
-    while (isRotating) await new Promise(r => setTimeout(r, 10));
-    const axis = axes[Math.floor(Math.random() * 3)];
-    const layer = layers[Math.floor(Math.random() * 3)];
-    const angle = Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2;
+  const axes = ['x','y','z'];
+  const layers = [-1,0,1];
+  for (let i=0;i<diff;i++) {
+    while (isRotating) await new Promise(r=>setTimeout(r,10));
+    const axis = axes[Math.floor(Math.random()*axes.length)];
+    const layer = layers[Math.floor(Math.random()*layers.length)];
+    const angle = Math.random() > .5 ? Math.PI/2 : -Math.PI/2;
     rotateFace(axis, layer, angle);
-    await new Promise(r => setTimeout(r, 285));
+    await new Promise(r=>setTimeout(r,285));
   }
 }
 
@@ -341,19 +439,16 @@ function solveCube() {
   if (isRotating) return;
   isRotating = true;
   new TWEEN.Tween(cubeGroup.rotation)
-    .to({ x: 0, y: 0, z: 0 }, 700)
+    .to({x:0,y:0,z:0},700)
     .easing(TWEEN.Easing.Cubic.InOut)
-    .onComplete(() => {
-      createCube();
-      isRotating = false;
-    })
+    .onComplete(() => { createCube(); isRotating=false; })
     .start();
 }
 
 function animate() {
   requestAnimationFrame(animate);
   TWEEN.update();
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 
 init();
