@@ -94,6 +94,7 @@ function createCube() {
           new THREE.MeshLambertMaterial({ color: z === -1 ? COLORS.back : 0x111111, transparent: true })
         ];
 
+        materials.forEach(m => { m.userData.base = m.color.getHex(); });
         const cubie = new THREE.Mesh(geometry, materials);
         cubie.position.set(x * spacing, y * spacing, z * spacing);
         cubie.userData = { x, y, z };
@@ -136,10 +137,21 @@ function faceName(n) {
   return 'BACK';
 }
 
+// Shading: how dark the pressed tile and every tile that moves with it become (1 = no change).
+const SHADE = 0.55;
+
+function resetShading() {
+  cubies.forEach(c => c.material.forEach(m => {
+    m.opacity = 1;
+    m.emissive.setHex(0x000000);
+    if (m.userData.base !== undefined) m.color.setHex(m.userData.base);
+  }));
+}
+
 function clearSelection() {
   selectedCubie = null;
   arrowDefs = [];
-  cubies.forEach(c => c.material.forEach(m => { m.opacity = 1; m.emissive.setHex(0x000000); }));
+  resetShading();
   const label = document.getElementById('face-label');
   if (label) label.classList.remove('show');
   setArrowsShown(false);
@@ -164,9 +176,14 @@ function refreshSelection() {
   if (!selectedCubie) return;
   const n = tileNormal(selectedCubie, selectedMat);
 
-  // Only the tapped tile is highlighted (frame + a light glow); nothing else is dimmed or lit.
-  cubies.forEach(c => c.material.forEach(m => { m.opacity = 1; m.emissive.setHex(0x000000); }));
-  selectedCubie.material[selectedMat].emissive.setHex(0x3a3a3a);
+  // Shade the pressed tile and the tiles connected to it (the row and column that will turn).
+  // Every other tile keeps its normal look.
+  resetShading();
+  const sliceAxes = AXES.filter(a => Math.abs(n[a]) < 0.5);
+  cubies.forEach(c => {
+    const connected = sliceAxes.some(a => Math.round(c.position[a]) === Math.round(selectedCubie.position[a]));
+    if (connected) c.material.forEach(m => m.color.setHex(m.userData.base).multiplyScalar(SHADE));
+  });
 
   const label = document.getElementById('face-label');
   if (label) {
