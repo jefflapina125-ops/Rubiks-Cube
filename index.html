@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Rubik's Cube</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <!-- TWEEN.js for smooth animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/23.1.1/tween.umd.js"></script>
+</head>
+<body>
+    <div id="ui-panel">
+        <div class="stat-box">
+            <div class="label">DIFFICULTY</div>
+            <select id="difficulty">
+                <option value="5">Easy</option>
+                <option value="20" selected>Medium</option>
+                <option value="50">Hard</option>
+                <option value="100">Expert</option>
+            </select>
+        </div>
+        <div class="button-group">
+            <button id="shuffle-btn">SHUFFLE</button>
+            <button id="solve-btn">COMPLETE</button>
+            <button id="restart-btn">Restart</button><button id="stop-btn">Stop</button>
+        </div>
+        <div class="controls">
+            <p><b>Right Click + Drag:</b> Rotate Camera</p>
+            <p><b>Scroll:</b> Zoom</p>
+            <p><b>Click Tile:</b> Select it and highlight its neighbors</p>
+            <p><b>Click Highlighted Tile:</b> Turn the layer that way</p>
+            <p><b>Esc / Click Empty Space:</b> Deselect</p>
+        </div>
+    </div>
+
+    <div id="view-panel">
+        <div class="label">QUICK VIEW</div>
+        <div class="view-buttons">
+            <button data-view="top">TOP</button>
+            <button data-view="bottom">BOTTOM</button>
+            <button data-view="front">FRONT</button>
+            <button data-view="back">BACK</button>
+            <button data-view="left">LEFT</button>
+            <button data-view="right">RIGHT</button>
+        </div>
+    </div>
+    <div id="face-label" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-family: sans-serif; font-size: 24px; pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 10;"></div><div id="canvas-container"></div>
+    <script src="script.js"></script>
+</body>
+</html>
+

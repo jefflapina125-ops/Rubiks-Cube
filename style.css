@@ -1,0 +1,129 @@
+:root {
+    --bg-dark: #0f172a;
+    --panel-bg: rgba(30, 41, 59, 0.8);
+    --text-main: #f8fafc;
+    --text-dim: #94a3b8;
+    --accent: #3b82f6;
+    --border: #334155;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg-dark);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text-main);
+}
+
+#ui-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    pointer-events: none;
+}
+
+#view-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+    background: var(--panel-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    padding: 15px;
+    border-radius: 12px;
+    width: 140px;
+}
+
+.view-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.view-buttons button {
+    padding: 8px;
+    font-size: 11px;
+}
+
+#ui-panel > * {
+    pointer-events: auto;
+}
+
+.stat-box {
+    background: var(--panel-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    padding: 15px;
+    border-radius: 12px;
+    width: 180px;
+}
+
+.label {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+select {
+    width: 100%;
+    background: var(--bg-dark);
+    color: white;
+    border: 1px solid var(--border);
+    padding: 5px;
+    border-radius: 4px;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+button {
+    background: var(--panel-bg);
+    color: white;
+    border: 1px solid var(--border);
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+#solve-btn {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+#solve-btn:hover {
+    background: #059669;
+}
+
+.controls {
+    background: var(--panel-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+}
+
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+}
