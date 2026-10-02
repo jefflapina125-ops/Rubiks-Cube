@@ -104,39 +104,54 @@ function setupEventListeners() {
         updateCamera();
     });
 
-    // Unified mouse + touch controls: drag anywhere on the canvas to orbit; tap a cubie to select it.
-    const canvas = renderer.domElement;
-    canvas.style.touchAction = 'none';
-    let activePointer = null;
-    let pointerStart = { x: 0, y: 0 };
-    let pointerLast = { x: 0, y: 0 };
-    let pointerDragged = false;
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-    canvas.addEventListener('pointerdown', e => {
-        if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
-        activePointer = e.pointerId; pointerStart = pointerLast = { x: e.clientX, y: e.clientY }; pointerDragged = false;
-        canvas.setPointerCapture(e.pointerId);
-    });
-    canvas.addEventListener('pointermove', e => {
-        if (activePointer !== e.pointerId) return;
-        const dx = e.clientX - pointerLast.x, dy = e.clientY - pointerLast.y;
-        if (Math.hypot(e.clientX-pointerStart.x, e.clientY-pointerStart.y) > 5) pointerDragged = true;
-        if (pointerDragged) { cameraRotation.y += dx * 0.008; cameraRotation.x += dy * 0.008; cameraRotation.x = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, cameraRotation.x)); updateCamera(); }
-        pointerLast = { x: e.clientX, y: e.clientY };
-    });
-    canvas.addEventListener('pointerup', e => {
-        if (activePointer !== e.pointerId) return;
-        if (!pointerDragged) {
-            const rect = canvas.getBoundingClientRect();
-            const mouse = new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
-            const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(cubies);
-            if (intersects.length) { selectedCubie = intersects[0].object; cubies.forEach(c => c.material.forEach(m => m.opacity = 1)); selectedCubie.material.forEach(m => m.opacity = 0.7); }
-            else { selectedCubie = null; cubies.forEach(c => c.material.forEach(m => m.opacity = 1)); }
+    // Right Click Camera Rotate
+    window.addEventListener('mousedown', (e) => {
+        if (e.button === 2) {
+            isRightMouseDown = true;
+            lastMousePos = { x: e.clientX, y: e.clientY };
         }
-        activePointer = null;
     });
-    canvas.addEventListener('pointercancel', () => { activePointer = null; });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 2) isRightMouseDown = false;
+    });
+
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    window.addEventListener('mousemove', (e) => {
+        if (isRightMouseDown) {
+            const deltaX = e.clientX - lastMousePos.x;
+            const deltaY = e.clientY - lastMousePos.y;
+            cameraRotation.y += deltaX * 0.01;
+            cameraRotation.x += deltaY * 0.01;
+            cameraRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraRotation.x));
+            updateCamera();
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+    });
+
+    // Selection
+    window.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(cubies);
+
+        if (intersects.length > 0) {
+            selectedCubie = intersects[0].object;
+            // Highlight effect
+            cubies.forEach(c => c.material.forEach(m => m.opacity = 1));
+            selectedCubie.material.forEach(m => m.opacity = 0.7);
+        } else {
+            selectedCubie = null;
+            cubies.forEach(c => c.material.forEach(m => m.opacity = 1));
+        }
+    });
 
     // Turn Face via Arrow Keys
     window.addEventListener('keydown', (e) => {

@@ -1,9 +1,7 @@
-RUBIK'S CUBE MOBILE UI UPDATE
+RUBIKS CUBE website update
 
-Upload these files to the ROOT of your existing GitHub Pages repository, replacing index.html, style.css, and script.js: index.html, style.css, script.js, manifest.webmanifest, icon.svg, sw.js.
+Upload all files in this folder to the root of your GitHub Pages repository, replacing files with the same names.
 
-Mobile UI: compact floating panels, responsive spacing, collapsible help, fullscreen button. Drag on the cube or empty canvas area to orbit; tapping without dragging selects a cubie.
+This update improves the level carousel with GPU-friendly transform animations, touch/pointer swipe support, per-card level name/status/start button, removes the external level status panel, and adds lightweight synthesized UI sounds with a Settings toggle. Level 1 remains playable; Levels 2-10 remain locked.
 
-After deployment, open the website in Chrome and refresh. If installed as a PWA, remove only the old Rubik's Cube app/shortcut and install it again to refresh the icon/manifest.
-
-Fullscreen note: the fullscreen button requests browser fullscreen when supported. Android may still show system bars depending on browser, OS, and install mode; websites cannot force-hide Android notification/navigation bars in every configuration. The manifest requests fullscreen display for installed PWAs.
+After deploying, refresh the site. If your installed PWA caches old files, close it fully and reopen; update service worker cache version if needed.

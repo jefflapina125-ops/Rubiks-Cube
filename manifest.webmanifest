@@ -1,11 +1,1 @@
-{
-  "name": "Rubik's Cube 3D",
-  "short_name": "Rubik's Cube",
-  "start_url": "./",
-  "scope": "./",
-  "display": "fullscreen",
-  "orientation": "landscape",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220",
-  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
-}
+{"name":"RUBIKS CUBE","short_name":"Rubiks Cube","start_url":"./","display":"standalone","background_color":"#071720","theme_color":"#071720","orientation":"landscape","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
