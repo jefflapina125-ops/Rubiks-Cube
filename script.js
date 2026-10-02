@@ -14,8 +14,9 @@ let cubies = [];
 let isRotating = false;
 let selectedCubie = null;
 let selectedMat = 0;          // which sticker (material index) of the selected cubie was tapped
-let arrowLayer = null;
-let arrowButtons = [];
+let selectionGroup = null;    // 3D tile frame + arrow stickers
+let frameMesh = null;
+let arrowMeshes = [];
 let arrowDefs = [];
 let arrowsShown = false;
 let cameraZoom = 6;
@@ -65,7 +66,7 @@ function init() {
   scene.add(directionalLight);
 
   createCube();
-  createArrowUI();
+  createSelectionVisuals();
   setupGameInput();
   updateCamera();
   resizeGame();
@@ -112,7 +113,6 @@ const TILE_STEP = 1.05;                       // distance between cubie centres
 const AXES = ['x', 'y', 'z'];
 // Outward normal of each BoxGeometry material slot: +x, -x, +y, -y, +z, -z
 const LOCAL_NORMALS = [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]];
-const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 5.5l6.5 6.5-6.5 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function snapToAxis(v) {
   const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
@@ -163,13 +163,10 @@ function selectTile(tile) {
 function refreshSelection() {
   if (!selectedCubie) return;
   const n = tileNormal(selectedCubie, selectedMat);
-  const sliceAxes = AXES.filter(a => Math.abs(n[a]) < 0.5);   // the two axes lying in the tile's face
 
-  cubies.forEach(c => {
-    const inCross = sliceAxes.some(a => Math.round(c.position[a]) === Math.round(selectedCubie.position[a]));
-    c.material.forEach(m => { m.opacity = inCross ? 1 : 0.4; m.emissive.setHex(0x000000); });
-  });
-  selectedCubie.material[selectedMat].emissive.setHex(0x555555);
+  // Only the tapped tile is highlighted (frame + a light glow); nothing else is dimmed or lit.
+  cubies.forEach(c => c.material.forEach(m => { m.opacity = 1; m.emissive.setHex(0x000000); }));
+  selectedCubie.material[selectedMat].emissive.setHex(0x3a3a3a);
 
   const label = document.getElementById('face-label');
   if (label) {
@@ -179,6 +176,7 @@ function refreshSelection() {
   }
 
   buildArrowDefs(n);
+  placeSelectionVisuals(n);
 }
 
 // One arrow per direction (up/down/left/right on the tile's face).
@@ -202,63 +200,133 @@ function buildArrowDefs(n) {
   });
 }
 
-function createArrowUI() {
-  arrowLayer = document.createElement('div');
-  arrowLayer.id = 'arrow-layer';
+/* ----- 3D sticker visuals: highlight frame on the tapped tile + 4 flat arrows ----- */
+
+function squareRing(outer, inner, color, lift) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-outer, -outer); shape.lineTo(outer, -outer); shape.lineTo(outer, outer);
+  shape.lineTo(-outer, outer); shape.lineTo(-outer, -outer);
+  const hole = new THREE.Path();
+  hole.moveTo(-inner, -inner); hole.lineTo(-inner, inner); hole.lineTo(inner, inner);
+  hole.lineTo(inner, -inner); hole.lineTo(-inner, -inner);
+  shape.holes.push(hole);
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), stickerMaterial(color));
+  mesh.position.z = lift;
+  return mesh;
+}
+
+function arrowShape(scale) {
+  const pts = [[-0.30,-0.11],[0.04,-0.11],[0.04,-0.24],[0.33,0],[0.04,0.24],[0.04,0.11],[-0.30,0.11]]
+    .map(p => new THREE.Vector2(p[0] * scale, p[1] * scale));
+  return new THREE.Shape(pts);
+}
+
+function stickerMaterial(color) {
+  return new THREE.MeshBasicMaterial({
+    color, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+  });
+}
+
+function createSelectionVisuals() {
+  selectionGroup = new THREE.Group();
+  selectionGroup.visible = false;
+
+  // Tile highlight: dark border with a white line inside it, readable on every tile colour.
+  frameMesh = new THREE.Group();
+  frameMesh.add(squareRing(0.5, 0.40, 0x0b1220, 0));
+  frameMesh.add(squareRing(0.47, 0.43, 0xffffff, 0.006));
+  selectionGroup.add(frameMesh);
+
+  // Arrow stickers: white arrow with a dark outline, plus an invisible tap area.
   for (let i = 0; i < 4; i++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'tile-arrow';
-    b.setAttribute('aria-label', 'Turn slice');
-    b.innerHTML = ARROW_SVG;
-    b.addEventListener('click', e => {
-      e.stopPropagation();
-      const def = arrowDefs[i];
-      if (def && selectedCubie && !isRotating) rotateFace(def.axis, def.layer, def.angle);
-    });
-    arrowLayer.appendChild(b);
-    arrowButtons.push(b);
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape(1.3)), stickerMaterial(0x0b1220)));
+    const fill = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape(1)), stickerMaterial(0xffffff));
+    fill.position.z = 0.006;
+    root.add(fill);
+    const hit = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7),
+      new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    hit.userData.index = i;
+    root.add(hit);
+    selectionGroup.add(root);
+    arrowMeshes.push({ root, hit });
   }
-  document.getElementById('game-screen').appendChild(arrowLayer);
+  scene.add(selectionGroup);
+}
+
+// Lay an object flat on a face: local +X -> xDir, local +Z -> the face normal.
+function orient(obj, xDir, zDir) {
+  const y = new THREE.Vector3().crossVectors(zDir, xDir);
+  obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xDir, y, zDir));
+}
+
+// Each arrow sits one tile away from the tapped tile, flat on the face. If a tile is there it looks
+// like a sticker on it; at the cube's edge there is no tile, so the arrow just floats in that spot.
+function placeSelectionVisuals(n) {
+  if (!selectionGroup || !selectedCubie) return;
+  const tangent = new THREE.Vector3();
+  tangent[AXES.find(a => Math.abs(n[a]) < 0.5)] = 1;
+  frameMesh.position.copy(selectedCubie.position).addScaledVector(n, 0.51);
+  orient(frameMesh, tangent, n);
+  arrowDefs.forEach((def, i) => {
+    const root = arrowMeshes[i].root;
+    root.position.copy(selectedCubie.position).addScaledVector(n, 0.52).addScaledVector(def.dir, TILE_STEP);
+    orient(root, def.dir, n);
+  });
 }
 
 function setArrowsShown(show) {
-  if (!arrowLayer || show === arrowsShown) return;
+  if (!selectionGroup || show === arrowsShown) return;
   arrowsShown = show;
-  arrowLayer.classList.toggle('show', show);
+  selectionGroup.visible = show;
 }
 
-function projectToLayer(worldPos, rect) {
-  const v = worldPos.clone().project(camera);
-  return { x: (v.x + 1) / 2 * rect.width, y: (1 - v.y) / 2 * rect.height };
-}
-
-// Runs every frame: pins the 4 arrows to the selected tile. An arrow sits one tile away in its
-// direction, so on an edge tile with no neighbour it floats just outside the cube.
+// Runs every frame: hides the visuals while a turn animates or the tile faces away, and keeps the
+// on-screen direction of each arrow up to date (used by the keyboard arrows).
 function updateArrows() {
-  if (!arrowLayer) return;
+  if (!selectionGroup) return;
   if (!selectedCubie || isRotating || arrowDefs.length !== 4) { setArrowsShown(false); return; }
 
   const n = tileNormal(selectedCubie, selectedMat);
   const center = selectedCubie.position.clone().addScaledVector(n, 0.52);
-  const centerW = cubeGroup.localToWorld(center.clone());
-  const nW = n.clone().transformDirection(cubeGroup.matrixWorld);
-  const facing = camera.position.clone().sub(centerW).normalize().dot(nW);
+  const facing = camera.position.clone().sub(center).normalize().dot(n);
   if (facing < 0.1) { setArrowsShown(false); return; }   // tile is edge-on or on the far side
 
-  const rect = arrowLayer.getBoundingClientRect();
-  const c0 = projectToLayer(centerW, rect);
-  arrowDefs.forEach((def, i) => {
-    const pW = cubeGroup.localToWorld(center.clone().addScaledVector(def.dir, TILE_STEP));
-    const p = projectToLayer(pW, rect);
-    const ang = Math.atan2(p.y - c0.y, p.x - c0.x);
-    def.sx = Math.cos(ang);
-    def.sy = Math.sin(ang);
-    const x = clamp(p.x, 30, rect.width - 30);
-    const y = clamp(p.y, 30, rect.height - 30);
-    arrowButtons[i].style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + ang + 'rad)';
+  const c0 = center.clone().project(camera);
+  arrowDefs.forEach(def => {
+    const p = center.clone().addScaledVector(def.dir, TILE_STEP).project(camera);
+    const dx = p.x - c0.x, dy = -(p.y - c0.y);
+    const len = Math.hypot(dx, dy) || 1;
+    def.sx = dx / len;
+    def.sy = dy / len;
   });
   setArrowsShown(true);
+}
+
+function pickArrow(clientX, clientY) {
+  if (!arrowsShown) return null;
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(getPointerNdc(clientX, clientY), camera);
+  const hits = raycaster.intersectObjects(arrowMeshes.map(a => a.hit), false);
+  return hits.length ? arrowDefs[hits[0].object.userData.index] : null;
+}
+
+// One tap: an arrow sticker turns its slice, a tile selects, empty space deselects.
+function handleTap(clientX, clientY) {
+  if (isRotating) return;
+  const arrow = pickArrow(clientX, clientY);
+  if (arrow) {
+    rotateFace(arrow.axis, arrow.layer, arrow.angle);
+    return;
+  }
+  const tile = pickTile(clientX, clientY);
+  if (tile) {
+    selectTile(tile);
+    playGameSound('tap');
+  } else {
+    clearSelection();
+  }
 }
 
 // Keep the face label visible: drop it under the toolbar if they would overlap.
@@ -451,13 +519,7 @@ function mobileTouchEnd(e) {
 
   if (state.mode === 'rotate' && !state.moved) {
     const t = e.changedTouches[0];
-    const tile = pickTile(t.clientX, t.clientY);
-    if (tile) {
-      selectTile(tile);
-      playGameSound('tap');
-    } else {
-      clearSelection();
-    }
+    handleTap(t.clientX, t.clientY);
   }
 }
 
@@ -504,8 +566,7 @@ function desktopMouseUp(e) {
   desktopMouse = null;
 
   if (state.mode === 'select' && e.button === 0 && !state.moved) {
-    const tile = pickTile(e.clientX, e.clientY);
-    if (tile) selectTile(tile); else clearSelection();
+    handleTap(e.clientX, e.clientY);
   }
 }
 
