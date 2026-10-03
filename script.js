@@ -137,8 +137,8 @@ function faceName(n) {
   return 'BACK';
 }
 
-// Shading: how dark the pressed tile and every tile that moves with it become (1 = no change).
-const SHADE = 0.55;
+// Shading: how dark the pressed tile becomes (1 = no change, lower = darker).
+const SHADE = 0.5;
 
 function resetShading() {
   cubies.forEach(c => c.material.forEach(m => {
@@ -176,14 +176,10 @@ function refreshSelection() {
   if (!selectedCubie) return;
   const n = tileNormal(selectedCubie, selectedMat);
 
-  // Shade the pressed tile and the tiles connected to it (the row and column that will turn).
-  // Every other tile keeps its normal look.
+  // Darken ONLY the pressed tile. Every other tile keeps its normal colour.
   resetShading();
-  const sliceAxes = AXES.filter(a => Math.abs(n[a]) < 0.5);
-  cubies.forEach(c => {
-    const connected = sliceAxes.some(a => Math.round(c.position[a]) === Math.round(selectedCubie.position[a]));
-    if (connected) c.material.forEach(m => m.color.setHex(m.userData.base).multiplyScalar(SHADE));
-  });
+  const pressed = selectedCubie.material[selectedMat];
+  pressed.color.setHex(pressed.userData.base).multiplyScalar(SHADE);
 
   const label = document.getElementById('face-label');
   if (label) {
@@ -346,18 +342,32 @@ function handleTap(clientX, clientY) {
   }
 }
 
-// Keep the face label visible: drop it under the toolbar if they would overlap.
+// Put the face label in the free space at the top right: just left of the VIEW panel when there is
+// room beside the toolbar, otherwise right under the VIEW panel. It never covers the cube.
 function positionFaceLabel() {
   const label = document.getElementById('face-label');
-  const bar = document.getElementById('game-toolbar');
   const screenEl = document.getElementById('game-screen');
-  if (!label || !bar || !screenEl) return;
-  label.style.top = '';
+  const panel = document.getElementById('view-panel');
+  const bar = document.getElementById('game-toolbar');
+  if (!label || !screenEl) return;
+
+  label.style.transform = 'none';
+  label.style.left = 'auto';
+  label.style.right = '10px';
+  label.style.top = '10px';
+
   const sr = screenEl.getBoundingClientRect();
-  const br = bar.getBoundingClientRect();
-  const lr = label.getBoundingClientRect();
-  if (lr.right > br.left && lr.left < br.right && lr.top < br.bottom) {
-    label.style.top = (br.bottom - sr.top + 8) + 'px';
+  const pr = panel ? panel.getBoundingClientRect() : null;
+  const br = bar ? bar.getBoundingClientRect() : null;
+  const lw = label.offsetWidth;
+  const gap = 10;
+
+  if (pr && br && (pr.left - gap) - (br.right + gap) >= lw) {
+    label.style.right = (sr.right - pr.left + gap) + 'px';
+    label.style.top = (pr.top - sr.top + 6) + 'px';
+  } else if (pr) {
+    label.style.right = (sr.right - pr.right) + 'px';
+    label.style.top = (pr.bottom - sr.top + 8) + 'px';
   }
 }
 

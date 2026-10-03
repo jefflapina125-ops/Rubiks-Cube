@@ -132,5 +132,9 @@ html,body{height:100%;height:100dvh}
 .in-app .home-footer{justify-content:center}
 
 /* ---------- TAP-TILE CONTROLS: cross arrows + face label ---------- */
-#face-label{visibility:hidden;padding:6px 14px;border-radius:999px;border:1px solid var(--tone);background:rgba(5,18,27,.8);backdrop-filter:blur(10px);font-size:12px;font-weight:800;letter-spacing:.14em;white-space:nowrap;text-shadow:none}
+#face-label{visibility:hidden;padding:6px 14px;border-radius:999px;border:1px solid var(--tone);background:rgba(5,18,27,.8);backdrop-filter:blur(10px);font-size:11px;font-weight:800;letter-spacing:.14em;white-space:nowrap;text-shadow:none}
 #face-label.show{visibility:visible}
+
+/* ---------- LEVEL CARDS: keep the START button inside the card on short screens ---------- */
+.level-face{width:min(58%,160px,21svh)}
+.card-info,.card-cta{flex:none}
