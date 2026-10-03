@@ -14,6 +14,7 @@ let cubies = [];
 let isRotating = false;
 let selectedCubie = null;
 let selectedMat = 0;          // which sticker (material index) of the selected cubie was tapped
+let selectedSpot = null;      // WHERE on the cube the tap happened (grid cell + face); stays put when the cube turns
 let selectionGroup = null;    // 3D tile frame + arrow stickers
 let frameMesh = null;
 let arrowMeshes = [];
@@ -148,7 +149,38 @@ function resetShading() {
   }));
 }
 
+// The selection is a SPOT on the cube (grid cell + face direction), not a particular tile. After a
+// turn the arrows, frame and darkening stay on that spot, and whichever tile is there now is used.
+function spotOf(cubie, matIdx) {
+  return {
+    gx: Math.round(cubie.position.x / TILE_STEP),
+    gy: Math.round(cubie.position.y / TILE_STEP),
+    gz: Math.round(cubie.position.z / TILE_STEP),
+    n: tileNormal(cubie, matIdx)
+  };
+}
+
+function sameSpot(a, b) {
+  return a.gx === b.gx && a.gy === b.gy && a.gz === b.gz && a.n.equals(b.n);
+}
+
+// Finds the cubie + sticker currently sitting on the selected spot.
+function resolveSpot() {
+  const sp = selectedSpot;
+  if (!sp) return false;
+  const c = cubies.find(q =>
+    Math.round(q.position.x / TILE_STEP) === sp.gx &&
+    Math.round(q.position.y / TILE_STEP) === sp.gy &&
+    Math.round(q.position.z / TILE_STEP) === sp.gz);
+  if (!c) return false;
+  for (let i = 0; i < 6; i++) {
+    if (tileNormal(c, i).equals(sp.n)) { selectedCubie = c; selectedMat = i; return true; }
+  }
+  return false;
+}
+
 function clearSelection() {
+  selectedSpot = null;
   selectedCubie = null;
   arrowDefs = [];
   resetShading();
@@ -159,6 +191,7 @@ function clearSelection() {
 
 function setSelection(cubie, matIdx) {
   clearSelection();
+  selectedSpot = spotOf(cubie, matIdx);
   selectedCubie = cubie;
   selectedMat = matIdx;
   refreshSelection();
@@ -166,14 +199,14 @@ function setSelection(cubie, matIdx) {
 
 function selectTile(tile) {
   if (isRotating) return;
-  if (selectedCubie === tile.cubie && selectedMat === tile.matIdx) clearSelection();
+  if (selectedSpot && sameSpot(selectedSpot, spotOf(tile.cubie, tile.matIdx))) clearSelection();
   else setSelection(tile.cubie, tile.matIdx);
 }
 
-// Re-derives highlight, face label and arrows. Called on select and after every turn,
-// because the selected tile travels with its slice and may end up on a different face.
+// Re-derives highlight, face label and arrows. Called on select and after every turn. The spot stays
+// where it was tapped; only the tile sitting on it changes.
 function refreshSelection() {
-  if (!selectedCubie) return;
+  if (!selectedSpot || !resolveSpot()) return;
   const n = tileNormal(selectedCubie, selectedMat);
 
   // Darken ONLY the pressed tile. Every other tile keeps its normal colour.
