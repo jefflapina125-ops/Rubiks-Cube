@@ -138,7 +138,7 @@ function faceName(n) {
   return 'BACK';
 }
 
-// Shading: how dark the pressed tile becomes (1 = no change, lower = darker).
+// Shading: how dark the pressed tile and the arrow tiles become (1 = no change, lower = darker).
 const SHADE = 0.5;
 
 function resetShading() {
@@ -179,6 +179,23 @@ function resolveSpot() {
   return false;
 }
 
+// Darkens the sticker facing direction n on the cubie at grid cell (gx, gy, gz), if that cell exists.
+function shadeSpot(gx, gy, gz, n) {
+  if (Math.abs(gx) > 1 || Math.abs(gy) > 1 || Math.abs(gz) > 1) return;
+  const c = cubies.find(q =>
+    Math.round(q.position.x / TILE_STEP) === gx &&
+    Math.round(q.position.y / TILE_STEP) === gy &&
+    Math.round(q.position.z / TILE_STEP) === gz);
+  if (!c) return;
+  for (let i = 0; i < 6; i++) {
+    if (tileNormal(c, i).equals(n)) {
+      const m = c.material[i];
+      m.color.setHex(m.userData.base).multiplyScalar(SHADE);
+      return;
+    }
+  }
+}
+
 function clearSelection() {
   selectedSpot = null;
   selectedCubie = null;
@@ -209,10 +226,13 @@ function refreshSelection() {
   if (!selectedSpot || !resolveSpot()) return;
   const n = tileNormal(selectedCubie, selectedMat);
 
-  // Darken ONLY the pressed tile. Every other tile keeps its normal colour.
+  // Darken only the pressed tile and the tiles that carry an arrow (one step away from it).
+  // Everything else keeps its normal colour. Arrows with no tile under them (cube edge) darken nothing.
   resetShading();
-  const pressed = selectedCubie.material[selectedMat];
-  pressed.color.setHex(pressed.userData.base).multiplyScalar(SHADE);
+  buildArrowDefs(n);
+  const sp = selectedSpot;
+  shadeSpot(sp.gx, sp.gy, sp.gz, n);
+  arrowDefs.forEach(def => shadeSpot(sp.gx + def.dir.x, sp.gy + def.dir.y, sp.gz + def.dir.z, n));
 
   const label = document.getElementById('face-label');
   if (label) {
@@ -221,7 +241,6 @@ function refreshSelection() {
     positionFaceLabel();
   }
 
-  buildArrowDefs(n);
   placeSelectionVisuals(n);
 }
 
