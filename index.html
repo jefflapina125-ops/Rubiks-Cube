@@ -11,7 +11,7 @@
   <title>RUBIKS CUBE</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=7">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/23.1.1/tween.umd.js"></script>
 </head>
@@ -143,8 +143,8 @@
 
   <div id="toast" role="status" aria-live="polite"></div>
 
-  <script src="script.js"></script>
-  <script src="menu.js"></script>
+  <script src="script.js?v=7"></script>
+  <script src="menu.js?v=7"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));

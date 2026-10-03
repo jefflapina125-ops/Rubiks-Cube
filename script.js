@@ -111,6 +111,7 @@ function createCube() {
 
 /* ---------------- TILE SELECTION + CROSS ARROWS ---------------- */
 
+const BUILD = 'v7';
 const TILE_STEP = 1.05;                       // distance between cubie centres
 const AXES = ['x', 'y', 'z'];
 // Outward normal of each BoxGeometry material slot: +x, -x, +y, -y, +z, -z
@@ -236,7 +237,7 @@ function refreshSelection() {
 
   const label = document.getElementById('face-label');
   if (label) {
-    label.textContent = faceName(n) + ' FACE';
+    label.textContent = faceName(n) + ' FACE \u00b7 ' + BUILD;   // BUILD tag: delete " \u00b7 " + BUILD once you have confirmed the update loaded
     label.classList.add('show');
     positionFaceLabel();
   }
